@@ -1,0 +1,29 @@
+# Config for the 3-nucleosome synthetic dataset produced by:
+#   python scripts/make_nucleosome_fastqs.py
+#
+# 550 bp construct with three positioned nucleosomes inside a 700 bp reference:
+#   nuc1: 102-222     nuc2: 269-416     nuc3: 436-583
+# Linker GpCs/CpGs are methylated (M.CviPI + M.SssI dual-enzyme dSMF), stay as C.
+# Nucleosome GpCs/CpGs are protected, convert to T after bisulfite/EM-seq.
+#
+# Pipeline runs paired-end Bismark directly on R1+R2 (no FLASH merge,
+# no length filter).
+sample_id: nucleosomes
+
+fastq_r1: data/nucleosomes/nuc_R1.fastq.gz
+fastq_r2: data/nucleosomes/nuc_R2.fastq.gz
+
+genome_dir: data/nucleosomes              # folder containing reference.fa
+genome_fasta: data/nucleosomes/reference.fa
+
+out_dir: results/nucleosomes
+threads: 2
+
+# Non-directional library, save unaligned/ambiguous reads for inspection.
+# --maxins 1000 lifts Bismark's default 500 bp ceiling on insert size; our
+# construct is 550 bp and typical SMF amplicons run up to a few hundred bp larger.
+bismark_options: "--non_directional --un --ambiguous --maxins 1000"
+extract_options: "--CX --cytosine_report --comprehensive"
+
+# No dedup -- amplicon-style.
+deduplicate: "no"

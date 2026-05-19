@@ -1,0 +1,9 @@
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+scipy>=1.10
+# Optional — only needed if you parse real BAM/FASTA inputs:
+pysam>=0.22
+pyfaidx>=0.7
+pytest>=7.4
+PyYAML>=6.0

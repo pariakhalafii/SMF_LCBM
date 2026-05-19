@@ -1,0 +1,31 @@
+# Config for the tiny synthetic dataset produced by:
+#     python scripts/make_synthetic_fastqs.py
+#
+# Use this to dry-run the whole upstream pipeline on your laptop in seconds,
+# without touching your real 1M-read FASTQs.
+sample_id: synthetic
+
+fastq_r1: data/synthetic/synth_R1.fastq.gz
+fastq_r2: data/synthetic/synth_R2.fastq.gz
+
+genome_dir: data/synthetic            # the FOLDER containing reference.fa
+genome_fasta: data/synthetic/reference.fa
+
+out_dir: results/synthetic
+threads: 2
+
+# Reads overlap by ~50 bp on a 550 bp insert -- defaults are fine.
+flash_min_overlap: 30
+flash_max_overlap: 100
+flash_max_mismatch_density: 0.25
+
+# Bismark options -- non-directional library, save unaligned/ambiguous.
+bismark_options: "--non_directional --un --ambiguous"
+extract_options: "--CX --cytosine_report --comprehensive"
+
+# No dedup -- amplicon-style synthetic data (every read is from the same locus).
+deduplicate: "no"
+
+# Minimum read length filter. The synthetic insert is 550 bp -> merged reads will be
+# ~550 bp. Set this to 500 to match the real-data setting and confirm filter behaviour.
+min_read_length: 500

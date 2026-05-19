@@ -1,0 +1,26 @@
+# --- Sample / run config for the shell pipeline ---
+# Pipeline = FastQC + Trim Galore -> Bismark paired-end -> methylation extractor
+#            -> custom per-read caller -> analysis.
+sample_id: demo_sample
+
+# Paired-end FASTQs (R1 and R2 from the sequencer, NOT merged)
+fastq_r1: data/raw/demo_R1.fastq.gz
+fastq_r2: data/raw/demo_R2.fastq.gz
+
+# Reference
+genome_dir: refs/genome           # directory containing the FASTA Bismark prepped
+genome_fasta: refs/genome/genome.fa
+
+# Output dirs
+out_dir: results/demo_sample
+threads: 8
+
+# Bismark options for paired-end alignment of non-directional bisulfite/EM-seq libs.
+# --maxins 1000 lifts the default 500 bp insert-size ceiling, which is too low
+# for typical SMF amplicons (~550-700 bp inserts).
+bismark_options: "--non_directional --un --ambiguous --maxins 1000"
+extract_options: "--CX --cytosine_report --comprehensive"
+
+# Deduplication is OFF by default for amplicon SMF (every read at the same locus).
+# Set to "yes" for whole-genome SMF where you want to remove PCR duplicates.
+deduplicate: "no"

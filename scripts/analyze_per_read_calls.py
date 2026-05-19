@@ -1,0 +1,178 @@
+"""Run the SMF downstream analysis on a per-read calls TSV.
+
+This script picks up where ``scripts/extract_per_read_methylation.py`` leaves off:
+takes the TSV of per-read methylation calls, builds a per-read matrix, classifies
+single-molecule footprint states, and writes plots + summaries to disk.
+
+If you point ``--truth`` at a ground-truth TSV (e.g. the one produced by
+``make_synthetic_fastqs.py``), it also prints a confusion matrix so you can see how
+well the classifier recovers the simulated states.
+
+Usage:
+
+    python scripts/analyze_per_read_calls.py \\
+        --tsv     results/synthetic/methylation/per_read_calls.tsv \\
+        --feature-center 283 \\
+        --out-dir results/synthetic/plots \\
+        --truth   data/synthetic/truth.tsv
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from smf import classify, io as smf_io, per_read, viz  # noqa: E402
+
+
+def _strip_pair_suffix(read_id: str) -> str:
+    """Bismark sometimes appends `_1:N:0:1` (the FASTQ comment) to the read name.
+    Strip that off so we can match against truth files keyed by the bare read ID."""
+    return re.sub(r"_[12]:N:\d+:\d+$", "", read_id)
+
+
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--tsv", required=True, help="per-read calls TSV from extract_per_read_methylation.py")
+    p.add_argument("--feature-center", type=int, required=True,
+                   help="reference position (1-based) of the feature you want to classify around")
+    p.add_argument("--contexts", default="GCH,HCG",
+                   help="comma-separated contexts to use. Default GCH,HCG = both readouts "
+                        "from dual-enzyme dSMF (M.CviPI on GpC + M.SssI on CpG). "
+                        "Pass just 'GCH' for GpC-only accessibility, just 'HCG' for CpG-only.")
+    p.add_argument("--min-sites-per-read", type=int, default=8,
+                   help="drop reads with fewer than this many informative calls (default 8)")
+    p.add_argument("--sort-by", choices=["feature", "global", "none"], default="global",
+                   help="how to sort the rows of the heatmap. "
+                        "'feature' sorts by accessibility in a window around --feature-center "
+                        "(differs across feature centers). "
+                        "'global' (default) sorts by mean accessibility across the whole window "
+                        "(SAME row order regardless of feature center, useful for comparing plots). "
+                        "'none' keeps the input order.")
+    p.add_argument("--out-dir", required=True, help="where to write plots + CSV summaries")
+    p.add_argument("--truth", default=None,
+                   help="optional ground-truth TSV with read_id and state columns")
+    args = p.parse_args(argv)
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    contexts = tuple(c.strip() for c in args.contexts.split(",") if c.strip())
+
+    # -------------------------------------------------- 1. Load
+    print(f"[analyze] loading {args.tsv}")
+    prm = smf_io.read_per_read_tsv(args.tsv, contexts=contexts)
+    print(f"  {prm.n_reads} reads x {prm.n_sites} informative {','.join(contexts)} sites")
+
+    # -------------------------------------------------- 2. Coverage filter
+    prm_f = prm.filter_reads(min_sites=args.min_sites_per_read)
+    print(f"  {prm_f.n_reads} reads remain after >= {args.min_sites_per_read}-site coverage filter")
+
+    # -------------------------------------------------- 3. Sort + classify
+    if args.sort_by == "feature":
+        sorted_prm = per_read.sort_by_pattern(prm_f, feature_center=args.feature_center, window=80)
+        sort_desc = f"sorted by accessibility around {args.feature_center}"
+    elif args.sort_by == "global":
+        # Sort by mean accessibility across the whole window. This produces the SAME
+        # row order regardless of which feature centre is being analyzed, so plots
+        # for different features over the same data are directly comparable.
+        sorted_prm = per_read.sort_by_pattern(
+            prm_f,
+            feature_center=int((prm_f.region_start + prm_f.region_end) / 2),
+            window=int((prm_f.region_end - prm_f.region_start) / 2 + 1),
+        )
+        sort_desc = "sorted globally (same row order across feature centres)"
+    else:
+        sorted_prm = prm_f
+        sort_desc = "input order"
+
+    result = classify.classify_footprints(prm_f, feature_center=args.feature_center)
+    print(f"[analyze] heatmap rows {sort_desc}")
+    print("[analyze] classifier counts:", result.counts())
+
+    # -------------------------------------------------- 4. Plots
+    print("[analyze] writing plots to", out_dir)
+    viz.single_molecule_heatmap(
+        sorted_prm, feature_center=args.feature_center,
+        title=f"SMF heatmap -- centred at {args.feature_center}",
+    ).savefig(out_dir / "single_molecule_heatmap.png", dpi=150)
+
+    # 5th plot: same heatmap but with R1+R2 mates merged into one row per DNA
+    # molecule (so each row corresponds to a physical molecule, not a BAM record).
+    merged_prm = per_read.merge_paired_reads(prm_f)
+    if args.sort_by == "feature":
+        merged_sorted = per_read.sort_by_pattern(
+            merged_prm, feature_center=args.feature_center, window=80)
+    elif args.sort_by == "global":
+        merged_sorted = per_read.sort_by_pattern(
+            merged_prm,
+            feature_center=int((merged_prm.region_start + merged_prm.region_end) / 2),
+            window=int((merged_prm.region_end - merged_prm.region_start) / 2 + 1),
+        )
+    else:
+        merged_sorted = merged_prm
+    viz.single_molecule_heatmap(
+        merged_sorted, feature_center=args.feature_center,
+        title=f"SMF heatmap (R1+R2 merged per molecule) -- centred at {args.feature_center}",
+    ).savefig(out_dir / "single_molecule_heatmap_paired.png", dpi=150)
+    print(f"[analyze] paired-merge: {prm_f.n_reads} BAM records collapsed to "
+          f"{merged_prm.n_reads} molecules")
+
+    viz.average_accessibility_plot(
+        prm_f, feature_center=args.feature_center, smooth_bp=20,
+        title="Average GpC accessibility",
+    ).savefig(out_dir / "average_accessibility.png", dpi=150)
+
+    viz.coverage_per_position_plot(
+        prm_f, feature_center=args.feature_center, low_coverage_threshold=20,
+    ).savefig(out_dir / "coverage_per_position.png", dpi=150)
+
+    viz.state_composition_plot(result.counts()).savefig(
+        out_dir / "state_composition.png", dpi=150)
+
+    # -------------------------------------------------- 5. Per-read summary
+    summary = pd.DataFrame({
+        "read_id": prm_f.read_ids,
+        "predicted_state": result.states,
+        "motif_score": result.motif_score,
+        "inner_flank_score": result.inner_flank_score,
+        "outer_flank_score": result.outer_flank_score,
+    })
+
+    # -------------------------------------------------- 6. Compare to truth (optional)
+    if args.truth:
+        truth = pd.read_csv(args.truth, sep="\t")
+        if "state" not in truth.columns or "read_id" not in truth.columns:
+            print(f"[analyze] WARNING: --truth must have read_id and state columns; got {list(truth.columns)}")
+        else:
+            # Normalise read IDs on both sides (Bismark may have mangled the headers).
+            truth["read_id_norm"] = truth["read_id"].astype(str).str.replace(" ", "_", regex=False)
+            summary["read_id_norm"] = summary["read_id"].apply(_strip_pair_suffix)
+            merged = summary.merge(truth[["read_id_norm", "state"]], on="read_id_norm", how="left")
+            merged.rename(columns={"state": "true_state"}, inplace=True)
+
+            confusion = pd.crosstab(
+                merged["true_state"].fillna("missing"),
+                merged["predicted_state"].fillna("missing"),
+                dropna=False,
+            )
+            print("\n[analyze] confusion matrix (rows = truth, cols = prediction):")
+            print(confusion)
+            confusion.to_csv(out_dir / "confusion_matrix.csv")
+
+            summary = merged.drop(columns=["read_id_norm"])
+
+    summary.to_csv(out_dir / "per_read_summary.csv", index=False)
+    print(f"[analyze] wrote per-read summary to {out_dir/'per_read_summary.csv'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
