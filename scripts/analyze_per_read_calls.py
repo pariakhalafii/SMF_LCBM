@@ -104,27 +104,6 @@ def main(argv: list[str]) -> int:
         title=f"SMF heatmap -- centred at {args.feature_center}",
     ).savefig(out_dir / "single_molecule_heatmap.png", dpi=150)
 
-    # 5th plot: same heatmap but with R1+R2 mates merged into one row per DNA
-    # molecule (so each row corresponds to a physical molecule, not a BAM record).
-    merged_prm = per_read.merge_paired_reads(prm_f)
-    if args.sort_by == "feature":
-        merged_sorted = per_read.sort_by_pattern(
-            merged_prm, feature_center=args.feature_center, window=80)
-    elif args.sort_by == "global":
-        merged_sorted = per_read.sort_by_pattern(
-            merged_prm,
-            feature_center=int((merged_prm.region_start + merged_prm.region_end) / 2),
-            window=int((merged_prm.region_end - merged_prm.region_start) / 2 + 1),
-        )
-    else:
-        merged_sorted = merged_prm
-    viz.single_molecule_heatmap(
-        merged_sorted, feature_center=args.feature_center,
-        title=f"SMF heatmap (R1+R2 merged per molecule) -- centred at {args.feature_center}",
-    ).savefig(out_dir / "single_molecule_heatmap_paired.png", dpi=150)
-    print(f"[analyze] paired-merge: {prm_f.n_reads} BAM records collapsed to "
-          f"{merged_prm.n_reads} molecules")
-
     viz.average_accessibility_plot(
         prm_f, feature_center=args.feature_center, smooth_bp=20,
         title="Average GpC accessibility",

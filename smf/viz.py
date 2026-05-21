@@ -79,12 +79,13 @@ def average_accessibility_plot(
     from .stats import average_accessibility_profile
 
     grid, smoothed = average_accessibility_profile(prm, smooth_bp=smooth_bp)
+    smf = (1.0 - smoothed) * 100  # % SMF = (1 - F(C)) × 100
 
     fig, ax = plt.subplots(figsize=figsize)
-    ax.plot(grid, smoothed, color="tab:blue", linewidth=1.4)
-    ax.set_ylim(0, 1)
-    ax.set_xlabel("Reference position (bp)")
-    ax.set_ylabel("Mean GpC methylation")
+    ax.plot(grid, smf, color="tab:red", linewidth=1.4)
+    ax.set_ylim(0, 100)
+    ax.set_xlabel("Position (bp)")
+    ax.set_ylabel("% SMF")
     ax.set_title(title)
     if feature_center is not None:
         ax.axvline(feature_center, color="black", linewidth=0.8, linestyle="--")
