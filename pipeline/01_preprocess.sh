@@ -32,6 +32,7 @@ trim_galore \
     --output_dir "$TRIM_DIR" \
     --fastqc \
     --length 70 \
+    --stringency 6 \
     "$fastq_r1" "$fastq_r2"
 
 echo "[01] Done. Trimmed FASTQs in $TRIM_DIR"

@@ -138,8 +138,22 @@ def iter_xm_calls(
             except KeyError:
                 continue
 
-            ref_seq = str(fasta[chrom][read.reference_start : read.reference_end].seq).upper()
-            strand = "-" if read.is_reverse else "+"
+            # Fetch one extra base on the left so that context_at() never hits its
+            # pos==0 boundary guard when the detecting G is the very first base of
+            # the aligned read (fixes GCH sites at the read's 5'-most position).
+            fetch_start = max(0, read.reference_start - 1)
+            ref_seq = str(fasta[chrom][fetch_start : read.reference_end + 1].seq).upper()
+
+            # In Bismark non-directional paired-end BAM, whether XM characters appear
+            # at C positions (use strand="+") or G positions (use strand="-") depends
+            # on orientation, not simply on is_reverse:
+            #   OT-R1 (FLAG≈99,  is_rev=F, is_r2=F): XM at C → "+"
+            #   OT-R2 (FLAG≈147, is_rev=T, is_r2=T): XM at C → "+"
+            #   OB-R1 (FLAG≈83,  is_rev=T, is_r2=F): XM at G → "-"
+            #   OB-R2 (FLAG≈163, is_rev=F, is_r2=T): XM at G → "-"
+            # Rule: strand="+" when is_reverse==is_read2, strand="-" otherwise.
+            # Works for single-end too (is_read2=False, so is_reverse==False → "+").
+            strand = "+" if (read.is_reverse == read.is_read2) else "-"
 
             ref_pos = read.reference_start
             qpos = 0
@@ -147,10 +161,10 @@ def iter_xm_calls(
                 if op in (0, 7, 8):  # M / = / X -- consumes both
                     for k in range(length):
                         rp = ref_pos + k
-                        offset = rp - read.reference_start
+                        offset = rp - fetch_start
                         if 0 <= offset < len(ref_seq):
                             ctx = context_at(ref_seq, offset, strand)
-                            if ctx in (Context.GCH, Context.HCG):
+                            if ctx in (Context.GCH, Context.HCG, Context.CCG):
                                 call_char = xm[qpos + k]
                                 # Strand normalization: a duplex GpC site has its
                                 # + strand C and its - strand C at DIFFERENT reference
@@ -161,17 +175,17 @@ def iter_xm_calls(
                                 if strand == "-":
                                     if ctx is Context.GCH:
                                         canonical_pos = rp + 1   # - strand C of GpC -> + strand C is one base downstream
-                                    else:                         # HCG
+                                    else:                         # HCG / CCG: both are CpG, - strand G at c+1 → + strand C at c
                                         canonical_pos = rp - 1   # - strand C of CpG -> + strand C is one base upstream
                                 else:
                                     canonical_pos = rp
-                                if call_char in "Zz" and ctx is Context.HCG:
+                                if call_char in "Zz" and ctx in (Context.HCG, Context.CCG):
                                     yield PerReadCall(
                                         read_id=read.query_name or "",
                                         chrom=chrom,
                                         pos=canonical_pos,
                                         strand=strand,
-                                        context=Context.HCG,
+                                        context=Context.HCG,  # CCG is a CpG site too
                                         methylated=(call_char == "Z"),
                                     )
                                 elif call_char in "HhXxUu" and ctx is Context.GCH:
