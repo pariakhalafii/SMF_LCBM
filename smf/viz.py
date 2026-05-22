@@ -28,6 +28,9 @@ def single_molecule_heatmap(
     cmap_methylated: str = "#D4D4D4",     # accessible / methylated GpC
     cmap_unmethylated: str = "#990000",   # protected / unmethylated GpC -- field convention
     nan_color: str = "white",
+    free_dna_mask: np.ndarray | None = None,
+    free_dna_color: str = "#E0FF14",
+    sort_free_dna: bool = True,
     figsize: tuple[float, float] = (8.0, 6.0),
 ) -> Figure:
     """Render the canonical SMF single-molecule heatmap.
@@ -35,11 +38,29 @@ def single_molecule_heatmap(
     Each row is a read, each column an informative GpC site. Methylated calls
     (accessible) are dark, unmethylated calls (protected) are light, missing calls
     are white. A vertical line marks ``feature_center`` if given.
-    """
-    cmap = ListedColormap([nan_color, cmap_unmethylated, cmap_methylated])
-    norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5], cmap.N)
 
-    data = np.where(np.isnan(prm.matrix), -1.0, prm.matrix)
+    If ``free_dna_mask`` (bool array, length n_reads) is provided, those rows are
+    rendered as a solid stripe in ``free_dna_color``. When ``sort_free_dna=True``
+    (default) they are pushed to the bottom; when ``False`` they stay in the row
+    order of ``prm``.
+    """
+    if free_dna_mask is not None:
+        free_dna_mask = np.asarray(free_dna_mask, dtype=bool)
+        if sort_free_dna:
+            order = np.concatenate([np.where(~free_dna_mask)[0], np.where(free_dna_mask)[0]])
+            matrix = prm.matrix[order]
+            fdna = free_dna_mask[order]
+        else:
+            matrix = prm.matrix
+            fdna = free_dna_mask
+        cmap = ListedColormap([nan_color, cmap_unmethylated, cmap_methylated, free_dna_color])
+        norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5, 2.5], cmap.N)
+        data = np.where(np.isnan(matrix), -1.0, matrix)
+        data[fdna] = 2.0
+    else:
+        cmap = ListedColormap([nan_color, cmap_unmethylated, cmap_methylated])
+        norm = BoundaryNorm([-1.5, -0.5, 0.5, 1.5], cmap.N)
+        data = np.where(np.isnan(prm.matrix), -1.0, prm.matrix)
 
     fig, ax = plt.subplots(figsize=figsize)
     extent = (
@@ -56,12 +77,16 @@ def single_molecule_heatmap(
     if feature_center is not None:
         ax.axvline(feature_center, color="black", linewidth=0.8, linestyle="--")
 
-    # Build a small custom legend rather than a colourbar -- it's three categories.
     handles = [
         plt.Rectangle((0, 0), 1, 1, color=cmap_methylated, label="Accessible (methylated GpC)"),
         plt.Rectangle((0, 0), 1, 1, color=cmap_unmethylated, label="Protected (unmethylated GpC)"),
         plt.Rectangle((0, 0), 1, 1, color=nan_color, ec="grey", label="No call"),
     ]
+    if free_dna_mask is not None:
+        n_free = int(free_dna_mask.sum())
+        handles.append(
+            plt.Rectangle((0, 0), 1, 1, color=free_dna_color, label=f"Free DNA (n={n_free})")
+        )
     ax.legend(handles=handles, loc="upper right", fontsize=8, frameon=True)
     fig.tight_layout()
     return fig

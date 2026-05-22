@@ -71,6 +71,41 @@ class PerReadMatrix:
         with np.errstate(invalid="ignore"):
             return np.nanmean(self.matrix, axis=0)
 
+    def compute_free_dna_mask(
+        self,
+        feature_center: int,
+        nuc_half_width: int = 73,
+        threshold: float = 0.65,
+    ) -> np.ndarray:
+        """Boolean mask (n_reads,) where True = likely free DNA.
+
+        A read is flagged when its mean GpC methylation inside the nucleosome
+        footprint [center ± nuc_half_width] exceeds ``threshold``.  High
+        methylation in that zone means M.CviPI had full access → no nucleosome
+        was protecting the DNA → the molecule was free.
+        """
+        mask = (self.sites >= feature_center - nuc_half_width) & (
+            self.sites <= feature_center + nuc_half_width
+        )
+        if not mask.any():
+            return np.zeros(self.n_reads, dtype=bool)
+        sub = self.matrix[:, mask]
+        with np.errstate(invalid="ignore"):
+            mean_meth = np.nanmean(sub, axis=1)
+        return mean_meth > threshold
+
+    def filter_by_mask(self, keep: np.ndarray) -> "PerReadMatrix":
+        """Return a new matrix keeping only the rows where ``keep`` is True."""
+        keep = np.asarray(keep, dtype=bool)
+        return PerReadMatrix(
+            matrix=self.matrix[keep],
+            sites=self.sites,
+            read_ids=[rid for rid, k in zip(self.read_ids, keep) if k],
+            chrom=self.chrom,
+            region_start=self.region_start,
+            region_end=self.region_end,
+        )
+
 
 def per_read_matrix_from_calls(
     calls,                         # Iterable[PerReadCall]

@@ -60,6 +60,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--out-dir", required=True, help="where to write plots + CSV summaries")
     p.add_argument("--truth", default=None,
                    help="optional ground-truth TSV with read_id and state columns")
+    p.add_argument("--free-dna-threshold", type=float, default=0.65,
+                   help="mean GpC methylation in the nucleosome zone above which a read is "
+                        "classified as free DNA (default 0.65). Set to 1.0 to disable filtering.")
+    p.add_argument("--nuc-half-width", type=int, default=73,
+                   help="half-width in bp of the nucleosome zone used for free-DNA detection "
+                        "(default 73 bp, i.e. ±73 bp around --feature-center).")
     args = p.parse_args(argv)
 
     out_dir = Path(args.out_dir)
@@ -99,16 +105,55 @@ def main(argv: list[str]) -> int:
         sorted_prm = prm_f
         sort_desc = "input order"
 
-    result = classify.classify_footprints(prm_f, feature_center=args.feature_center)
+    # -------------------------------------------------- 3b. Free-DNA detection
+    # Compute mask in prm_f order (for filtering) and sorted_prm order (for flagged heatmap).
+    free_dna_mask = prm_f.compute_free_dna_mask(
+        feature_center=args.feature_center,
+        nuc_half_width=args.nuc_half_width,
+        threshold=args.free_dna_threshold,
+    )
+    free_dna_mask_sorted = sorted_prm.compute_free_dna_mask(
+        feature_center=args.feature_center,
+        nuc_half_width=args.nuc_half_width,
+        threshold=args.free_dna_threshold,
+    )
+    n_free = int(free_dna_mask.sum())
+    n_total = prm_f.n_reads
+    print(f"[analyze] free-DNA filter: {n_free}/{n_total} reads flagged "
+          f"(mean GpC in ±{args.nuc_half_width} bp > {args.free_dna_threshold})")
+    prm_clean = prm_f.filter_by_mask(~free_dna_mask)
+
+    if args.sort_by == "feature":
+        sorted_prm_clean = per_read.sort_by_pattern(prm_clean, feature_center=args.feature_center, window=80)
+    elif args.sort_by == "global":
+        sorted_prm_clean = per_read.sort_by_pattern(
+            prm_clean,
+            feature_center=int((prm_clean.region_start + prm_clean.region_end) / 2),
+            window=int((prm_clean.region_end - prm_clean.region_start) / 2 + 1),
+        )
+    else:
+        sorted_prm_clean = prm_clean
+
+    result = classify.classify_footprints(prm_clean, feature_center=args.feature_center)
     print(f"[analyze] heatmap rows {sort_desc}")
-    print("[analyze] classifier counts:", result.counts())
+    print("[analyze] classifier counts (free-DNA excluded):", result.counts())
 
     # -------------------------------------------------- 4. Plots
     print("[analyze] writing plots to", out_dir)
+
+    # Heatmap 1: free DNA filtered out entirely
+    viz.single_molecule_heatmap(
+        sorted_prm_clean, feature_center=args.feature_center,
+        title=f"SMF heatmap (free DNA removed, n={prm_clean.n_reads}) -- centred at {args.feature_center}",
+    ).savefig(out_dir / "single_molecule_heatmap.png", dpi=150)
+
+    # Heatmap 2: all reads, free DNA highlighted green in their natural sorted position
     viz.single_molecule_heatmap(
         sorted_prm, feature_center=args.feature_center,
-        title=f"SMF heatmap -- centred at {args.feature_center}",
-    ).savefig(out_dir / "single_molecule_heatmap.png", dpi=150)
+        title=f"SMF heatmap (free DNA highlighted, n={prm_f.n_reads}) -- centred at {args.feature_center}",
+        free_dna_mask=free_dna_mask_sorted,
+        sort_free_dna=False,
+    ).savefig(out_dir / "single_molecule_heatmap_flagged.png", dpi=150)
 
     viz.average_accessibility_plot(
         prm_f, feature_center=args.feature_center, smooth_bp=20,
@@ -125,7 +170,7 @@ def main(argv: list[str]) -> int:
 
     # -------------------------------------------------- 5. Per-read summary
     summary = pd.DataFrame({
-        "read_id": prm_f.read_ids,
+        "read_id": prm_clean.read_ids,
         "predicted_state": result.states,
         "motif_score": result.motif_score,
         "inner_flank_score": result.inner_flank_score,
