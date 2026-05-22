@@ -71,6 +71,12 @@ def main(argv: list[str]) -> int:
     prm = smf_io.read_per_read_tsv(args.tsv, contexts=contexts)
     print(f"  {prm.n_reads} reads x {prm.n_sites} informative {','.join(contexts)} sites")
 
+    # Build a per-site context lookup for the coverage plot colouring.
+    _raw = pd.read_csv(args.tsv, sep="\t", usecols=["pos", "context"],
+                       dtype={"context": str})
+    _site_ctx = _raw[_raw["context"].isin(contexts)].groupby("pos")["context"].first()
+    site_contexts = [_site_ctx.get(int(s), "GCH") for s in prm.sites]
+
     # -------------------------------------------------- 2. Coverage filter
     prm_f = prm.filter_reads(min_sites=args.min_sites_per_read)
     print(f"  {prm_f.n_reads} reads remain after >= {args.min_sites_per_read}-site coverage filter")
@@ -111,6 +117,7 @@ def main(argv: list[str]) -> int:
 
     viz.coverage_per_position_plot(
         prm_f, feature_center=args.feature_center, low_coverage_threshold=20,
+        site_contexts=site_contexts,
     ).savefig(out_dir / "coverage_per_position.png", dpi=150)
 
     viz.state_composition_plot(result.counts()).savefig(

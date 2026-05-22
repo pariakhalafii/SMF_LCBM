@@ -1,0 +1,28 @@
+# Config for mononucleosome SMF dataset (paired-end)
+#
+# Reference: REF_WIDOM_400 (400 bp)
+# Library: paired-end bisulfite SMF (R1 + R2)
+#
+# Pipeline:
+#   bash pipeline/01_preprocess.sh    config/config.mononuc.yaml
+#   bash pipeline/02_align.sh         config/config.mononuc.yaml
+#   bash pipeline/03_methylation_call.sh config/config.mononuc.yaml
+
+sample_id: mononuc
+
+fastq_r1: data/mononuc/MND065_3_S7_R1_001.fastq.gz
+fastq_r2: data/mononuc/MND065_3_S7_R2_001.fastq.gz
+
+genome_dir: data/mononuc
+genome_fasta: data/mononuc/REF_WIDOM.fasta
+
+out_dir: results/mononuc
+threads: 2
+
+# Non-directional paired-end bisulfite library.
+# --maxins 1000 to allow for larger insert sizes.
+bismark_options: "--non_directional --un --ambiguous --maxins 1000 --local"
+extract_options: "--CX --cytosine_report --comprehensive"
+
+# No dedup -- amplicon-style.
+deduplicate: "no"

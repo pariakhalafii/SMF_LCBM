@@ -1,0 +1,30 @@
+# Config for example1 -- single-end (merged) SMF reads
+#
+# Reference: Reference_L241_8x TetO (350 bp)
+# Reads: pre-merged single-end FASTQ (no R1/R2 splitting needed)
+#
+# Use the single-end pipeline scripts:
+#   bash pipeline/01_preprocess_se.sh config/config.example1.yaml
+#   bash pipeline/02_align_se.sh      config/config.example1.yaml
+#   bash pipeline/03_methylation_call.sh config/config.example1.yaml
+#   python scripts/extract_per_read_methylation.py ...  (see below)
+
+sample_id: example1
+
+fastq_se: data/example1/Merged_reads_ex1.fastq
+
+genome_dir: data/example1
+genome_fasta: data/example1/Ref_ex1.fa
+
+out_dir: results/example1
+threads: 2
+
+# Single-end, non-directional bisulfite library.
+bismark_options: "--non_directional --un --ambiguous --local"
+extract_options: "--CX --cytosine_report --comprehensive"
+
+# No dedup -- amplicon-style.
+deduplicate: "no"
+
+# Full reference region for per-read extraction:
+#   --region Reference_L241_8x:1-350

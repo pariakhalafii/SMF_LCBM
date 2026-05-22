@@ -20,7 +20,7 @@ flash_max_overlap: 100
 flash_max_mismatch_density: 0.25
 
 # Bismark options -- non-directional library, save unaligned/ambiguous.
-bismark_options: "--non_directional --un --ambiguous"
+bismark_options: "--non_directional --un --ambiguous --local"
 extract_options: "--CX --cytosine_report --comprehensive"
 
 # No dedup -- amplicon-style synthetic data (every read is from the same locus).

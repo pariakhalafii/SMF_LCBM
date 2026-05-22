@@ -25,8 +25,8 @@ def single_molecule_heatmap(
     *,
     feature_center: int | None = None,
     title: str = "Single-molecule SMF heatmap",
-    cmap_methylated: str = "tab:blue",     # accessible / methylated GpC
-    cmap_unmethylated: str = "tab:red",    # protected / unmethylated GpC -- field convention
+    cmap_methylated: str = "#D4D4D4",     # accessible / methylated GpC
+    cmap_unmethylated: str = "#990000",   # protected / unmethylated GpC -- field convention
     nan_color: str = "white",
     figsize: tuple[float, float] = (8.0, 6.0),
 ) -> Figure:
@@ -176,28 +176,49 @@ def coverage_per_position_plot(
     prm: PerReadMatrix,
     *,
     feature_center: int | None = None,
-    title: str = "Sequencing coverage per informative cytosine",
+    title: str = "Reads per informative cytosine",
     figsize: tuple[float, float] = (8.0, 3.0),
     low_coverage_threshold: int | None = None,
+    site_contexts: Sequence[str] | None = None,
 ) -> Figure:
-    """Bar plot of how many reads have an informative call at each cytosine.
+    """Stacked bar plot of protected (unmethylated) and methylated reads per cytosine.
 
-    Useful for spotting positions you should *not* trust in the heatmap because only a
-    handful of molecules cover them. If ``low_coverage_threshold`` is given, sites
-    below that threshold are highlighted in red.
+    If ``site_contexts`` is provided (a sequence of ``"GCH"`` or ``"HCG"`` strings
+    aligned with ``prm.sites``), bars are coloured by context.
     """
-    cov = prm.coverage_per_site()
+    protected  = np.nansum(prm.matrix == 0, axis=0).astype(int)
+    methylated = np.nansum(prm.matrix == 1, axis=0).astype(int)
     fig, ax = plt.subplots(figsize=figsize)
 
-    colors = ["tab:blue"] * len(cov)
-    if low_coverage_threshold is not None:
-        for i, c in enumerate(cov):
-            if c < low_coverage_threshold:
-                colors[i] = "tab:red"
+    COLOR_GCH_PROT  = "#035169"
+    COLOR_HCG_PROT  = "#990061"
+    COLOR_GCH_METH  = "#94DFE3"
+    COLOR_HCG_METH  = "#E6C8DA"
 
-    ax.bar(prm.sites, cov, color=colors, width=max(1, int((prm.sites.max() - prm.sites.min()) / max(1, len(prm.sites)))))
+    bar_width = max(1, int((prm.sites.max() - prm.sites.min()) / max(1, len(prm.sites))))
+
+    if site_contexts is not None:
+        prot_colors = [COLOR_GCH_PROT if ctx == "GCH" else COLOR_HCG_PROT for ctx in site_contexts]
+        meth_colors = [COLOR_GCH_METH if ctx == "GCH" else COLOR_HCG_METH for ctx in site_contexts]
+    else:
+        prot_colors = ["tab:blue"] * len(protected)
+        meth_colors = ["tab:cyan"] * len(methylated)
+
+    ax.bar(prm.sites, protected,  color=prot_colors, width=bar_width)
+    ax.bar(prm.sites, methylated, color=meth_colors, width=bar_width, bottom=protected)
+
+    # Legend
+    if site_contexts is not None:
+        from matplotlib.patches import Patch
+        ax.legend(handles=[
+            Patch(facecolor=COLOR_GCH_PROT, label="GCH protected (M.CviPI)"),
+            Patch(facecolor=COLOR_GCH_METH, label="GCH methylated (M.CviPI)"),
+            Patch(facecolor=COLOR_HCG_PROT, label="HCG protected (M.SssI)"),
+            Patch(facecolor=COLOR_HCG_METH, label="HCG methylated (M.SssI)"),
+        ], loc="upper right", fontsize=8)
+
     ax.set_xlabel("Reference position (bp)")
-    ax.set_ylabel("Reads covering site")
+    ax.set_ylabel("Reads")
     ax.set_title(title)
     if feature_center is not None:
         ax.axvline(feature_center, color="black", linewidth=0.8, linestyle="--")

@@ -99,7 +99,9 @@ def average_accessibility_profile(
     interp = np.interp(grid, sites, np.where(np.isnan(means), 0.5, means))
     half = max(1, smooth_bp // 2)
     kernel = np.ones(2 * half + 1) / (2 * half + 1)
-    smoothed = np.convolve(interp, kernel, mode="same")
-    # Clip floating-point overshoot back into the valid [0, 1] range for plotting.
+    # Pad with edge values (not zeros) so the smoothing doesn't pull edge positions
+    # toward 0.5 and produce a false SMF spike at the start/end of the window.
+    padded = np.pad(interp, half, mode="edge")
+    smoothed = np.convolve(padded, kernel, mode="valid")
     smoothed = np.clip(smoothed, 0.0, 1.0)
     return grid, smoothed

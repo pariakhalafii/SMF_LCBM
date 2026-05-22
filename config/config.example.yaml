@@ -18,7 +18,7 @@ threads: 8
 # Bismark options for paired-end alignment of non-directional bisulfite/EM-seq libs.
 # --maxins 1000 lifts the default 500 bp insert-size ceiling, which is too low
 # for typical SMF amplicons (~550-700 bp inserts).
-bismark_options: "--non_directional --un --ambiguous --maxins 1000"
+bismark_options: "--non_directional --un --ambiguous --maxins 1000 --local"
 extract_options: "--CX --cytosine_report --comprehensive"
 
 # Deduplication is OFF by default for amplicon SMF (every read at the same locus).

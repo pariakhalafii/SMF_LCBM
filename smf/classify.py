@@ -43,7 +43,7 @@ class ClassifierConfig:
 
     motif_half_width: int = 15        # +/- around feature_center -> "motif" core
     flank_inner: int = 35             # core flank for TF-bound test (just outside motif)
-    flank_outer: int = 100            # broader flank for nucleosome test
+    flank_outer: int = 70             # broader flank for nucleosome test
     min_motif_calls: int = 2          # require at least N informative sites in the core
     min_flank_calls: int = 2          # required flank sites for either flank
     motif_protected_max: float = 0.33 # mean accessibility in motif <= this => "protected"
