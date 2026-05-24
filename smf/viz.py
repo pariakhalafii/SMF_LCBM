@@ -284,6 +284,61 @@ def fragment_length_plot(
     return fig
 
 
+def read_alignment_plot(
+    prm: PerReadMatrix,
+    *,
+    feature_center: int | None = None,
+    title: str = "Read alignment",
+    color_covered: str = "black",
+    color_missing: str = "#D4D4D4",
+    figsize: tuple[float, float] = (8.0, 6.0),
+) -> Figure:
+    """Show which parts of each read are covered vs missing.
+
+    Each row is a read. The full span from a read's first to last informative
+    call is shown in black; everything outside that span is grey. This avoids
+    reads looking artificially short when they land on a GpC-sparse region.
+    """
+    pos_min = int(prm.sites.min())
+    pos_max = int(prm.sites.max())
+    grid = np.arange(pos_min, pos_max + 1)
+    covered = np.zeros((prm.n_reads, len(grid)), dtype=float)
+
+    for r_idx in range(prm.n_reads):
+        valid = ~np.isnan(prm.matrix[r_idx])
+        if not valid.any():
+            continue
+        lo = int(prm.sites[valid][0])
+        hi = int(prm.sites[valid][-1])
+        covered[r_idx, (grid >= lo) & (grid <= hi)] = 1.0
+
+    cmap = ListedColormap([color_missing, color_covered])
+    norm = BoundaryNorm([-0.5, 0.5, 1.5], cmap.N)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    extent = (
+        float(prm.sites.min()),
+        float(prm.sites.max()),
+        prm.n_reads,
+        0,
+    )
+    ax.imshow(covered, aspect="auto", interpolation="nearest", cmap=cmap, norm=norm, extent=extent)
+    ax.set_xlabel("Reference position (bp)")
+    ax.set_ylabel(f"Reads (n={prm.n_reads})")
+    ax.set_title(title)
+
+    if feature_center is not None:
+        ax.axvline(feature_center, color="red", linewidth=0.8, linestyle="--")
+
+    from matplotlib.patches import Patch
+    ax.legend(handles=[
+        Patch(facecolor=color_covered, label="Covered"),
+        Patch(facecolor=color_missing, ec="grey", label="Missing"),
+    ], loc="upper right", fontsize=8, frameon=True)
+    fig.tight_layout()
+    return fig
+
+
 def state_composition_plot(
     counts: dict[str, int],
     *,

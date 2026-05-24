@@ -48,8 +48,6 @@ def main(argv: list[str]) -> int:
                    help="comma-separated contexts to use. Default GCH,HCG = both readouts "
                         "from dual-enzyme dSMF (M.CviPI on GpC + M.SssI on CpG). "
                         "Pass just 'GCH' for GpC-only accessibility, just 'HCG' for CpG-only.")
-    p.add_argument("--min-sites-per-read", type=int, default=8,
-                   help="drop reads with fewer than this many informative calls (default 8)")
     p.add_argument("--sort-by", choices=["feature", "global", "none"], default="global",
                    help="how to sort the rows of the heatmap. "
                         "'feature' sorts by accessibility in a window around --feature-center "
@@ -83,9 +81,8 @@ def main(argv: list[str]) -> int:
     _site_ctx = _raw[_raw["context"].isin(contexts)].groupby("pos")["context"].first()
     site_contexts = [_site_ctx.get(int(s), "GCH") for s in prm.sites]
 
-    # -------------------------------------------------- 2. Coverage filter
-    prm_f = prm.filter_reads(min_sites=args.min_sites_per_read)
-    print(f"  {prm_f.n_reads} reads remain after >= {args.min_sites_per_read}-site coverage filter")
+    # -------------------------------------------------- 2. (no coverage filter)
+    prm_f = prm
 
     # -------------------------------------------------- 3. Sort + classify
     if args.sort_by == "feature":
@@ -167,6 +164,11 @@ def main(argv: list[str]) -> int:
 
     viz.state_composition_plot(result.counts()).savefig(
         out_dir / "state_composition.png", dpi=150)
+
+    viz.read_alignment_plot(
+        prm_f, feature_center=args.feature_center,
+        title=f"Read alignment (n={prm_f.n_reads}) -- centred at {args.feature_center}",
+    ).savefig(out_dir / "read_alignment.png", dpi=150)
 
     # -------------------------------------------------- 5. Per-read summary
     summary = pd.DataFrame({
